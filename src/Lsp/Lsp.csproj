@@ -6,8 +6,10 @@
     <PackageTargetFallback Condition=" '$(TargetFramework)' == 'netstandard1.6' ">$(PackageTargetFallback);dotnet5.4;portable-net45+win8</PackageTargetFallback>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Newtonsoft.Json" Version="10.0.2" />
-    <PackageReference Include="System.ValueTuple" Version="4.3.0" />
+    <PackageReference Include="Newtonsoft.Json" Version="10.0.3" />
+    <PackageReference Include="System.IO" Version="4.1.0" />
+    <PackageReference Include="System.Runtime" Version="4.3.0" />
+    <PackageReference Include="System.ValueTuple" Version="4.3.1" />
     <ProjectReference Include="..\JsonRpc\JsonRpc.csproj" />
   </ItemGroup>
 </Project>

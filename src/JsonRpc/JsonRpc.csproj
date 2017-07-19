@@ -10,8 +10,10 @@
         <InformationalVersion Condition="'$(GitVersion_InformationalVersion)' != ''">$(GitVersion_InformationalVersion)</InformationalVersion>
     </PropertyGroup>
     <ItemGroup>
-        <PackageReference Include="Newtonsoft.Json" Version="10.0.2" />
-        <PackageReference Include="System.ValueTuple" Version="4.3.0" />
+        <PackageReference Include="Newtonsoft.Json" Version="10.0.3" />
+        <PackageReference Include="System.IO" Version="4.1.0" />
+        <PackageReference Include="System.Runtime" Version="4.3.0" />
+        <PackageReference Include="System.ValueTuple" Version="4.3.1" />
     </ItemGroup>
     <ItemGroup Condition=" '$(TargetFramework)' == 'netstandard1.6' ">
         <PackageReference Include="System.Diagnostics.Process" Version="4.3.0" />
