@@ -2,12 +2,13 @@
 
     <PropertyGroup>
         <OutputType>Exe</OutputType>
-        <TargetFramework>netcoreapp1.1</TargetFramework>
+        <TargetFramework>netcoreapp2.0</TargetFramework>
         <RuntimeIdentifier>win7-x64</RuntimeIdentifier>
     </PropertyGroup>
 
     <ItemGroup>
-        <ProjectReference Include="../../src/Lsp/Lsp.csproj" />
+        <ProjectReference Include="../../src/Server/Server.csproj" />
+        <PackageReference Include="Microsoft.Extensions.Logging" Version="2.0.0" />
     </ItemGroup>
 
 </Project>

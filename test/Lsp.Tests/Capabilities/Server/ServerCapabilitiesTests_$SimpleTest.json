@@ -1,4 +1,4 @@
-﻿{
+{
     "textDocumentSync": {
         "openClose": true,
         "change": 1,
@@ -53,5 +53,9 @@
     },
     "experimental": {
         "abc": "123"
-    }
+    },
+    "typeDefinitionProvider": null,
+    "implementationProvider": null,
+    "colorProvider": null,
+    "foldingRangeProvider": null
 }

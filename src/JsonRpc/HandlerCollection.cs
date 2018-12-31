@@ -1,33 +1,40 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.Linq;
+using System.Reactive.Disposables;
 using System.Reflection;
+using OmniSharp.Extensions.Embedded.MediatR;
 
-namespace JsonRpc
+namespace OmniSharp.Extensions.JsonRpc
 {
-    class HandlerCollection : IEnumerable<IHandlerInstance>
+    [DebuggerDisplay("{Method}")]
+    public class HandlerCollection : IEnumerable<IHandlerDescriptor>
     {
         internal readonly List<HandlerInstance> _handlers = new List<HandlerInstance>();
 
-        internal class HandlerInstance : IHandlerInstance, IDisposable
+        internal class HandlerInstance : IHandlerDescriptor, IDisposable
         {
             private readonly Action _disposeAction;
 
-            public HandlerInstance(string method, IJsonRpcHandler handler, Type handlerInterface, Type @params, Action disposeAction)
+            public HandlerInstance(string method, IJsonRpcHandler handler, Type handlerInterface, Type @params, Type response, Action disposeAction)
             {
                 _disposeAction = disposeAction;
                 Handler = handler;
+                ImplementationType = handler.GetType();
                 Method = method;
                 HandlerType = handlerInterface;
                 Params = @params;
+                Response = response;
             }
 
             public IJsonRpcHandler Handler { get; }
             public Type HandlerType { get; }
+            public Type ImplementationType { get; }
             public string Method { get; }
             public Type Params { get; }
+            public Type Response { get; }
 
             public void Dispose()
             {
@@ -35,7 +42,7 @@ namespace JsonRpc
             }
         }
 
-        public IEnumerator<IHandlerInstance> GetEnumerator()
+        public IEnumerator<IHandlerDescriptor> GetEnumerator()
         {
             return _handlers.GetEnumerator();
         }
@@ -51,33 +58,42 @@ namespace JsonRpc
             if (i != null) _handlers.Remove(i);
         }
 
-        public IDisposable Add(IJsonRpcHandler handler)
+        public IDisposable Add(params IJsonRpcHandler[] handlers)
+        {
+            var cd = new CompositeDisposable();
+            foreach (var handler in handlers){
+                cd.Add(Add(GetMethodName(handler.GetType()), handler));
+            }
+            return cd;
+        }
+
+        public IDisposable Add(string method, IJsonRpcHandler handler)
         {
             var type = handler.GetType();
             var @interface = GetHandlerInterface(type);
 
             Type @params = null;
+            Type response = null;
             if (@interface.GetTypeInfo().IsGenericType)
             {
                 @params = @interface.GetTypeInfo().GetGenericArguments()[0];
+                var requestInterface = @params.GetInterfaces()
+                    .FirstOrDefault(x => x.IsGenericType && x.GetGenericTypeDefinition() == typeof(IRequest<>));
+                if (requestInterface != null)
+                    response = requestInterface.GetGenericArguments()[0];
             }
 
-            var h = new HandlerInstance(GetMethodName(type), handler, @interface, @params, () => Remove(handler));
+            var h = new HandlerInstance(method, handler, @interface, @params, response, () => Remove(handler));
             _handlers.Add(h);
             return h;
         }
 
-        public IHandlerInstance Get(IJsonRpcHandler handler)
-        {
-            return _handlers.Find(instance => instance.Handler == handler);
-        }
-
-        public IHandlerInstance Get(string method)
-        {
-            return _handlers.Find(instance => instance.Method == method);
-        }
-
-        private static readonly Type[] HandlerTypes = { typeof(INotificationHandler), typeof(INotificationHandler<>), typeof(IRequestHandler<>), typeof(IRequestHandler<,>), };
+        private static readonly Type[] HandlerTypes = {
+            typeof(IJsonRpcNotificationHandler),
+            typeof(IJsonRpcNotificationHandler<>),
+            typeof(IJsonRpcRequestHandler<>),
+            typeof(IJsonRpcRequestHandler<,>),
+        };
 
         private string GetMethodName(Type type)
         {

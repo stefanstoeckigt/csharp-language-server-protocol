@@ -1,19 +1,26 @@
-﻿using System;
+using System;
+using System.Linq;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
-using JsonRpc.Server;
-using JsonRpc.Server.Messages;
+using OmniSharp.Extensions.Embedded.MediatR;
+using Microsoft.Extensions.DependencyInjection;
+using OmniSharp.Extensions.JsonRpc.Server;
+using OmniSharp.Extensions.JsonRpc.Server.Messages;
 
-namespace JsonRpc
+namespace OmniSharp.Extensions.JsonRpc
 {
-    class RequestRouter : IRequestRouter
+    public class RequestRouter : IRequestRouter
     {
         private readonly HandlerCollection _collection;
+        private readonly ISerializer _serializer;
+        private readonly IServiceScopeFactory _serviceScopeFactory;
 
-        public RequestRouter(HandlerCollection collection)
+        public RequestRouter(HandlerCollection collection, ISerializer serializer, IServiceScopeFactory serviceScopeFactory)
         {
             _collection = collection;
+            _serializer = serializer;
+            _serviceScopeFactory = serviceScopeFactory;
         }
 
         public IDisposable Add(IJsonRpcHandler handler)
@@ -21,72 +28,94 @@ namespace JsonRpc
             return _collection.Add(handler);
         }
 
-        public async void RouteNotification(Notification notification)
+        private IHandlerDescriptor FindDescriptor(IMethodWithParams instance)
         {
-            var handler = _collection.Get(notification.Method);
-
-            Task result;
-            if (handler.Params is null)
-            {
-                result = ReflectionRequestHandlers.HandleNotification(handler);
-            }
-            else
-            {
-                var @params = notification.Params.ToObject(handler.Params);
-                result = ReflectionRequestHandlers.HandleNotification(handler, @params);
-            }
-            await result.ConfigureAwait(false);
+            return _collection.FirstOrDefault(x => x.Method == instance.Method);
         }
 
-
-        public Task<ErrorResponse> RouteRequest(Request request)
+        public async Task RouteNotification(IHandlerDescriptor handler, Notification notification)
         {
-            return RouteRequest(request, CancellationToken.None);
+            using (var scope = _serviceScopeFactory.CreateScope())
+            {
+                var context = scope.ServiceProvider.GetRequiredService<IRequestContext>();
+                context.Descriptor = handler;
+
+                object @params = null;
+                if (!(handler.Params is null))
+                {
+                    @params = notification.Params.ToObject(handler.Params, _serializer.JsonSerializer);
+                }
+                await MediatRHandlers.HandleNotification(scope.ServiceProvider.GetRequiredService<IMediator>(), handler, @params ?? EmptyRequest.Instance, CancellationToken.None).ConfigureAwait(false);
+            }
         }
 
-        protected virtual async Task<ErrorResponse> RouteRequest(Request request, CancellationToken token)
+        public Task<ErrorResponse> RouteRequest(IHandlerDescriptor descriptor, Request request)
         {
-            var handler = _collection.Get(request.Method);
+            return RouteRequest(descriptor, request, CancellationToken.None);
+        }
 
-            var method = _collection.Get(request.Method);
-            if (method is null)
+        protected virtual async Task<ErrorResponse> RouteRequest(IHandlerDescriptor handler, Request request, CancellationToken token)
+        {
+            using (var scope = _serviceScopeFactory.CreateScope())
             {
-                return new MethodNotFound(request.Id);
-            }
+                var context = scope.ServiceProvider.GetRequiredService<IRequestContext>();
+                context.Descriptor = handler;
 
-            Task result;
-            if (method.Params is null)
-            {
-                result = ReflectionRequestHandlers.HandleRequest(handler, token);
-            }
-            else
-            {
+                if (request.Method is null)
+                {
+                    return new MethodNotFound(request.Id, request.Method);
+                }
+
                 object @params;
                 try
                 {
-                    @params = request.Params.ToObject(method.Params);
+                    @params = request.Params.ToObject(handler.Params, _serializer.JsonSerializer);
                 }
                 catch
                 {
                     return new InvalidParams(request.Id);
                 }
 
-                result = ReflectionRequestHandlers.HandleRequest(handler, @params, token);
+                var result = MediatRHandlers.HandleRequest(scope.ServiceProvider.GetRequiredService<IMediator>(), handler, @params, token);
+
+                await result.ConfigureAwait(false);
+
+                object responseValue = null;
+                if (result.GetType().GetTypeInfo().IsGenericType)
+                {
+                    var property = typeof(Task<>)
+                        .MakeGenericType(result.GetType().GetTypeInfo().GetGenericArguments()[0]).GetTypeInfo()
+                        .GetProperty(nameof(Task<object>.Result), BindingFlags.Public | BindingFlags.Instance);
+
+                    responseValue = property.GetValue(result);
+                    if (responseValue?.GetType() == typeof(Unit))
+                    {
+                        responseValue = null;
+                    }
+                }
+
+                return new Client.Response(request.Id, responseValue);
             }
+        }
 
-            await result.ConfigureAwait(false);
+        public IHandlerDescriptor GetDescriptor(Notification notification)
+        {
+            return FindDescriptor(notification);
+        }
 
-            object responseValue = null;
-            if (result.GetType().GetTypeInfo().IsGenericType)
-            {
-                var property = typeof(Task<>)
-                    .MakeGenericType(result.GetType().GetTypeInfo().GetGenericArguments()[0]).GetTypeInfo()
-                    .GetProperty(nameof(Task<object>.Result), BindingFlags.Public | BindingFlags.Instance);
+        public IHandlerDescriptor GetDescriptor(Request request)
+        {
+            return FindDescriptor(request);
+        }
 
-                responseValue = property.GetValue(result);
-            }
+        Task IRequestRouter.RouteNotification(Notification notification)
+        {
+            return RouteNotification(GetDescriptor(notification), notification);
+        }
 
-            return new Client.Response(request.Id, responseValue);
+        Task<ErrorResponse> IRequestRouter.RouteRequest(Request request)
+        {
+            return RouteRequest(GetDescriptor(request), request);
         }
     }
 }

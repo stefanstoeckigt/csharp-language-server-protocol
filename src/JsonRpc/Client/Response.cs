@@ -1,13 +1,14 @@
-﻿using Newtonsoft.Json;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Serialization;
 
-namespace JsonRpc.Client
+namespace OmniSharp.Extensions.JsonRpc.Client
 {
     [JsonObject(NamingStrategyType = typeof(CamelCaseNamingStrategy))]
     public class Response
     {
-        public Response(object id) : this(id, null)
+        public Response(object id)
         {
+            Id = id;
         }
 
         public Response(object id, object result)
@@ -16,6 +17,7 @@ namespace JsonRpc.Client
             Result = result;
         }
 
+        [JsonProperty("jsonrpc")]
         public string ProtocolVersion { get; set; } = "2.0";
 
         public object Id { get; set; }

@@ -1,20 +1,23 @@
-﻿using System;
-using System.Collections.Generic;
+using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 
-namespace JsonRpc
+namespace OmniSharp.Extensions.JsonRpc
 {
     public class ProcessScheduler : IScheduler
     {
-        private readonly BlockingCollection<(RequestProcessType type, Func<Task> request)> _queue;
+        private readonly ILogger<ProcessScheduler> _logger;
+        private readonly BlockingCollection<(RequestProcessType type, string name, Func<Task> request)> _queue;
         private readonly CancellationTokenSource _cancel;
         private readonly Thread _thread;
 
-        public ProcessScheduler()
+        public ProcessScheduler(ILoggerFactory loggerFactory)
         {
-            _queue = new BlockingCollection<(RequestProcessType type, Func<Task> request)>();
+            _logger = loggerFactory.CreateLogger<ProcessScheduler>();
+            _queue = new BlockingCollection<(RequestProcessType type, string name, Func<Task> request)>();
             _cancel = new CancellationTokenSource();
             _thread = new Thread(ProcessRequestQueue) { IsBackground = true, Name = "ProcessRequestQueue" };
         }
@@ -24,9 +27,9 @@ namespace JsonRpc
             _thread.Start();
         }
 
-        public void Add(RequestProcessType type, Func<Task> request)
+        public void Add(RequestProcessType type, string name, Func<Task> request)
         {
-            _queue.Add((type, request));
+            _queue.Add((type, name, request));
         }
 
         private Task Start(Func<Task> request)
@@ -42,7 +45,7 @@ namespace JsonRpc
             if (list.Count == 0) return list;
 
             var result = new List<Task>();
-            foreach(var t in list)
+            foreach (var t in list)
             {
                 if (t.IsFaulted)
                 {
@@ -69,27 +72,39 @@ namespace JsonRpc
                 {
                     if (_queue.TryTake(out var item, Timeout.Infinite, token))
                     {
-                        var (type, request) = item;
-                        if (type == RequestProcessType.Serial)
+                        var (type, name, request) = item;
+                        try
                         {
-                            Task.WaitAll(waitables.ToArray(), token);
-                            Start(request).Wait(token);
+                            if (type == RequestProcessType.Serial)
+                            {
+                                Task.WaitAll(waitables.ToArray(), token);
+                                Start(request).Wait(token);
+                            }
+                            else if (type == RequestProcessType.Parallel)
+                            {
+                                waitables.Add(Start(request));
+                            }
+                            else
+                                throw new NotImplementedException("Only Serial and Parallel execution types can be handled currently");
+                            waitables = RemoveCompleteTasks(waitables);
+                            Interlocked.Exchange(ref _TestOnly_NonCompleteTaskCount, waitables.Count);
                         }
-                        else if (type == RequestProcessType.Parallel)
+                        catch (OperationCanceledException ex) when (ex.CancellationToken == token)
                         {
-                            waitables.Add(Start(request));
+                            throw;
                         }
-                        else
-                            throw new NotImplementedException("Only Serial and Parallel execution types can be handled currently");
-                        waitables = RemoveCompleteTasks(waitables);
-                        Interlocked.Exchange(ref _TestOnly_NonCompleteTaskCount, waitables.Count);
+                        catch (Exception e)
+                        {
+                            // TODO: Should we rethrow or swallow?
+                            // If an exception happens... the whole system could be in a bad state, hence this throwing currently.
+                            _logger.LogCritical(Events.UnhandledException, e, "Unhandled exception executing {Name}", name);
+                            throw;
+                        }
                     }
                 }
             }
-            catch (OperationCanceledException ex)
+            catch (OperationCanceledException ex) when (ex.CancellationToken == token)
             {
-                if (ex.CancellationToken != token)
-                    throw;
                 // OperationCanceledException - The CancellationToken has been canceled.
                 Task.WaitAll(waitables.ToArray(), TimeSpan.FromMilliseconds(1000));
                 var keeponrunning = RemoveCompleteTasks(waitables);

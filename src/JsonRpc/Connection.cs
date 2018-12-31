@@ -1,16 +1,8 @@
-﻿using System;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
+using System;
 using System.IO;
-using System.Linq;
-using System.Runtime.InteropServices;
-using System.Threading;
-using System.Threading.Tasks;
-using JsonRpc.Server;
-using JsonRpc.Server.Messages;
-using Newtonsoft.Json.Linq;
+using Microsoft.Extensions.Logging;
 
-namespace JsonRpc
+namespace OmniSharp.Extensions.JsonRpc
 {
     public class Connection : IDisposable
     {
@@ -23,7 +15,9 @@ namespace JsonRpc
             IReciever reciever,
             IRequestProcessIdentifier requestProcessIdentifier,
             IRequestRouter requestRouter,
-            IResponseRouter responseRouter)
+            IResponseRouter responseRouter,
+            ILoggerFactory loggerFactory,
+            ISerializer serializer)
         {
             _requestRouter = requestRouter;
 
@@ -33,7 +27,9 @@ namespace JsonRpc
                 reciever,
                 requestProcessIdentifier,
                 requestRouter,
-                responseRouter
+                responseRouter,
+                loggerFactory,
+                serializer
             );
         }
 

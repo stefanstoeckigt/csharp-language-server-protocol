@@ -1,7 +1,10 @@
-﻿using System;
+using System;
 using FluentAssertions;
-using Lsp.Capabilities.Server;
 using Newtonsoft.Json;
+using OmniSharp.Extensions.LanguageServer.Protocol;
+using OmniSharp.Extensions.LanguageServer.Protocol.Client.Capabilities;
+using OmniSharp.Extensions.LanguageServer.Protocol.Serialization;
+using OmniSharp.Extensions.LanguageServer.Protocol.Server.Capabilities;
 using Xunit;
 
 namespace Lsp.Tests.Capabilities.Server
@@ -13,11 +16,11 @@ namespace Lsp.Tests.Capabilities.Server
         {
             var model = TextDocumentSyncKind.Full;
             var result = Fixture.SerializeObject(model);
-            
+
             result.Should().Be(expected);
 
-            var deresult = JsonConvert.DeserializeObject<TextDocumentSyncKind>(expected);
-            deresult.ShouldBeEquivalentTo(model);
+            var deresult = new Serializer(ClientVersion.Lsp3).DeserializeObject<TextDocumentSyncKind>(expected);
+            deresult.Should().BeEquivalentTo(model);
         }
     }
 }

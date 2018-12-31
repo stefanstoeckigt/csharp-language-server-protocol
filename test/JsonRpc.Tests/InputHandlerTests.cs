@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -6,13 +6,15 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
-using JsonRpc.Client;
-using JsonRpc.Server;
-using JsonRpc.Server.Messages;
+using Microsoft.Extensions.Logging;
 using Newtonsoft.Json.Linq;
 using NSubstitute;
+using OmniSharp.Extensions.JsonRpc;
+using OmniSharp.Extensions.JsonRpc.Server;
+using OmniSharp.Extensions.JsonRpc.Server.Messages;
 using Xunit;
-using Request = JsonRpc.Server.Request;
+using Request = OmniSharp.Extensions.JsonRpc.Server.Request;
+using Response = OmniSharp.Extensions.JsonRpc.Client.Response;
 
 namespace JsonRpc.Tests
 {
@@ -38,7 +40,9 @@ namespace JsonRpc.Tests
                 reciever,
                 requestProcessIdentifier,
                 requestRouter,
-                responseRouter);
+                responseRouter,
+                Substitute.For<ILoggerFactory>(),
+                new Serializer());
             handler.Start();
             cts.Wait();
             Task.Delay(10).Wait();
@@ -59,9 +63,11 @@ namespace JsonRpc.Tests
                 Substitute.For<IRequestProcessIdentifier>(),
                 Substitute.For<IRequestRouter>(),
                 Substitute.For<IResponseRouter>(),
-                cts => {
+                cts =>
+                {
                     reciever.When(x => x.IsValid(Arg.Any<JToken>()))
-                        .Do(x => {
+                        .Do(x =>
+                        {
                             cts.Cancel();
                         });
                 }))
@@ -84,9 +90,11 @@ namespace JsonRpc.Tests
                 Substitute.For<IRequestProcessIdentifier>(),
                 Substitute.For<IRequestRouter>(),
                 Substitute.For<IResponseRouter>(),
-                cts => {
+                cts =>
+                {
                     reciever.When(x => x.IsValid(Arg.Any<JToken>()))
-                        .Do(x => {
+                        .Do(x =>
+                        {
                             threadName = System.Threading.Thread.CurrentThread.Name;
                             cts.Cancel();
                         });
@@ -113,9 +121,11 @@ namespace JsonRpc.Tests
                 Substitute.For<IRequestProcessIdentifier>(),
                 Substitute.For<IRequestRouter>(),
                 Substitute.For<IResponseRouter>(),
-                cts => {
+                cts =>
+                {
                     reciever.When(x => x.IsValid(Arg.Any<JToken>()))
-                        .Do(x => {
+                        .Do(x =>
+                        {
                             cts.Cancel();
                         });
                 }))
@@ -137,9 +147,9 @@ namespace JsonRpc.Tests
             reciever.GetRequests(Arg.Any<JToken>())
                 .Returns(c => (new Renor[] { req }, false));
 
-            var response = new Client.Response(1);
+            var response = new Response(1);
 
-            incomingRequestRouter.RouteRequest(req)
+            incomingRequestRouter.RouteRequest(Arg.Any<IHandlerDescriptor>(), req)
                 .Returns(response);
 
             using (NewHandler(
@@ -149,9 +159,11 @@ namespace JsonRpc.Tests
                 Substitute.For<IRequestProcessIdentifier>(),
                 incomingRequestRouter,
                 Substitute.For<IResponseRouter>(),
-                cts => {
+                cts =>
+                {
                     outputHandler.When(x => x.Send(Arg.Any<object>()))
-                        .Do(x => {
+                        .Do(x =>
+                        {
                             cts.Cancel();
                         });
                 }))
@@ -168,7 +180,7 @@ namespace JsonRpc.Tests
             var reciever = Substitute.For<IReciever>();
             var incomingRequestRouter = Substitute.For<IRequestRouter>();
 
-            var error = new Error(1, new ErrorMessage(1, "abc"));
+            var error = new RpcError(1, new ErrorMessage(1, "abc"));
             reciever.IsValid(Arg.Any<JToken>()).Returns(true);
             reciever.GetRequests(Arg.Any<JToken>())
                 .Returns(c => (new Renor[] { error }, false));
@@ -181,9 +193,11 @@ namespace JsonRpc.Tests
                 Substitute.For<IRequestProcessIdentifier>(),
                 incomingRequestRouter,
                 Substitute.For<IResponseRouter>(),
-                cts => {
+                cts =>
+                {
                     outputHandler.When(x => x.Send(Arg.Any<object>()))
-                        .Do(x => {
+                        .Do(x =>
+                        {
                             cts.Cancel();
                         });
                 }))
@@ -193,14 +207,14 @@ namespace JsonRpc.Tests
         }
 
         [Fact]
-        public void ShouldHandleNotification()
+        public async Task ShouldHandleNotification()
         {
             var inputStream = new MemoryStream(Encoding.ASCII.GetBytes("Content-Length: 2\r\n\r\n{}"));
             var outputHandler = Substitute.For<IOutputHandler>();
             var reciever = Substitute.For<IReciever>();
             var incomingRequestRouter = Substitute.For<IRequestRouter>();
 
-            var notification = new JsonRpc.Server.Notification("abc", null);
+            var notification = new Notification("abc", null);
             reciever.IsValid(Arg.Any<JToken>()).Returns(true);
             reciever.GetRequests(Arg.Any<JToken>())
                 .Returns(c => (new Renor[] { notification }, false));
@@ -212,14 +226,16 @@ namespace JsonRpc.Tests
                 Substitute.For<IRequestProcessIdentifier>(),
                 incomingRequestRouter,
                 Substitute.For<IResponseRouter>(),
-                cts => {
-                    incomingRequestRouter.When(x => x.RouteNotification(Arg.Any<JsonRpc.Server.Notification>()))
-                        .Do(x => {
+                cts =>
+                {
+                    incomingRequestRouter.When(x => x.RouteNotification(Arg.Any<IHandlerDescriptor>(), Arg.Any<Notification>()))
+                        .Do(x =>
+                        {
                             cts.Cancel();
                         });
                 }))
             {
-                incomingRequestRouter.Received().RouteNotification(notification);
+                await incomingRequestRouter.Received().RouteNotification(Arg.Any<IHandlerDescriptor>(), notification);
             }
         }
 
@@ -231,7 +247,7 @@ namespace JsonRpc.Tests
             var reciever = Substitute.For<IReciever>();
             var responseRouter = Substitute.For<IResponseRouter>();
 
-            var response = new JsonRpc.Server.Response(1L, JToken.Parse("{}"));
+            var response = new OmniSharp.Extensions.JsonRpc.Server.ServerResponse(1L, JToken.Parse("{}"));
             reciever.IsValid(Arg.Any<JToken>()).Returns(true);
             reciever.GetRequests(Arg.Any<JToken>())
                 .Returns(c => (new Renor[] { response }, true));
@@ -246,9 +262,11 @@ namespace JsonRpc.Tests
                 Substitute.For<IRequestProcessIdentifier>(),
                 Substitute.For<IRequestRouter>(),
                 responseRouter,
-                cts => {
+                cts =>
+                {
                     responseRouter.When(x => x.GetRequest(Arg.Any<long>()))
-                        .Do(x => {
+                        .Do(x =>
+                        {
                             cts.CancelAfter(1);
                         });
                 }))

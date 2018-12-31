@@ -1,7 +1,10 @@
-﻿using System;
+using System;
 using FluentAssertions;
-using Lsp.Models;
 using Newtonsoft.Json;
+using OmniSharp.Extensions.LanguageServer.Protocol;
+using OmniSharp.Extensions.LanguageServer.Protocol.Client.Capabilities;
+using OmniSharp.Extensions.LanguageServer.Protocol.Models;
+using OmniSharp.Extensions.LanguageServer.Protocol.Serialization;
 using Xunit;
 
 namespace Lsp.Tests.Models
@@ -16,8 +19,8 @@ namespace Lsp.Tests.Models
 
             result.Should().Be("null");
 
-            var deresult = JsonConvert.DeserializeObject<BooleanNumberString>("null");
-            deresult.ShouldBeEquivalentTo(model);
+            var deresult = new Serializer(ClientVersion.Lsp3).DeserializeObject<BooleanNumberString>("null");
+            deresult.Should().BeEquivalentTo(model);
         }
 
         [Fact]
@@ -28,8 +31,8 @@ namespace Lsp.Tests.Models
 
             result.Should().Be("1");
 
-            var deresult = JsonConvert.DeserializeObject<BooleanNumberString>("1");
-            deresult.ShouldBeEquivalentTo(model);
+            var deresult = new Serializer(ClientVersion.Lsp3).DeserializeObject<BooleanNumberString>("1");
+            deresult.Should().BeEquivalentTo(model);
         }
 
         [Fact]
@@ -40,8 +43,8 @@ namespace Lsp.Tests.Models
 
             result.Should().Be("true");
 
-            var deresult = JsonConvert.DeserializeObject<BooleanNumberString>("true");
-            deresult.ShouldBeEquivalentTo(model);
+            var deresult = new Serializer(ClientVersion.Lsp3).DeserializeObject<BooleanNumberString>("true");
+            deresult.Should().BeEquivalentTo(model);
         }
 
         [Fact]
@@ -52,8 +55,8 @@ namespace Lsp.Tests.Models
 
             result.Should().Be("\"abc\"");
 
-            var deresult = JsonConvert.DeserializeObject<BooleanNumberString>("\"abc\"");
-            deresult.ShouldBeEquivalentTo(model);
+            var deresult = new Serializer(ClientVersion.Lsp3).DeserializeObject<BooleanNumberString>("\"abc\"");
+            deresult.Should().BeEquivalentTo(model);
         }
     }
 }

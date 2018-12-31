@@ -1,28 +1,34 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
+using Autofac;
 using FluentAssertions;
-using Lsp.Capabilities.Client;
+using FluentAssertions.Primitives;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using NSubstitute;
+using OmniSharp.Extensions.LanguageServer.Protocol;
+using OmniSharp.Extensions.LanguageServer.Protocol.Client.Capabilities;
+using OmniSharp.Extensions.LanguageServer.Protocol.Serialization;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace Lsp.Tests.Capabilities.Client
 {
-    public class ClientCapabilitiesTests
+    public class ClientCapabilitiesTests : AutoTestBase
     {
-        // private const Fixtures = 
+        // private const Fixtures =
+        public ClientCapabilitiesTests(ITestOutputHelper testOutputHelper) : base(testOutputHelper) { }
+
         [Theory, JsonFixture]
         public void SimpleTest(string expected)
         {
-            var model = new ClientCapabilities()
-            {
+            var model = new ClientCapabilities() {
                 Experimental = new Dictionary<string, JToken>()
                 {
                     {  "abc", "test" }
                 },
-                TextDocument = new TextDocumentClientCapabilities()
-                {
-                    CodeAction = new CodeActionCapability() {  DynamicRegistration = true },
+                TextDocument = new TextDocumentClientCapabilities() {
+                    CodeAction = new CodeActionCapability() { DynamicRegistration = true },
                     CodeLens = new CodeLensCapability() { DynamicRegistration = true },
                     Definition = new DefinitionCapability() { DynamicRegistration = true },
                     DocumentHighlight = new DocumentHighlightCapability() { DynamicRegistration = true },
@@ -35,24 +41,20 @@ namespace Lsp.Tests.Capabilities.Client
                     References = new ReferencesCapability() { DynamicRegistration = true },
                     Rename = new RenameCapability() { DynamicRegistration = true },
                     SignatureHelp = new SignatureHelpCapability() { DynamicRegistration = true },
-                    Completion = new CompletionCapability()
-                    {
+                    Completion = new CompletionCapability() {
                         DynamicRegistration = true,
-                        CompletionItem = new CompletionItemCapability()
-                        {
+                        CompletionItem = new CompletionItemCapability() {
                             SnippetSupport = true
                         }
                     },
-                    Synchronization = new SynchronizationCapability()
-                    {
+                    Synchronization = new SynchronizationCapability() {
                         DynamicRegistration = true,
                         WillSave = true,
                         DidSave = true,
                         WillSaveWaitUntil = true
                     }
                 },
-                Workspace = new WorkspaceClientCapabilites()
-                {
+                Workspace = new WorkspaceClientCapabilities() {
                     ApplyEdit = true,
                     WorkspaceEdit = new WorkspaceEditCapability() { DocumentChanges = true },
                     DidChangeConfiguration = new DidChangeConfigurationCapability() { DynamicRegistration = true },
@@ -62,11 +64,18 @@ namespace Lsp.Tests.Capabilities.Client
                 }
             };
             var result = Fixture.SerializeObject(model);
-            
+
             result.Should().Be(expected);
 
-            var deresult = JsonConvert.DeserializeObject<ClientCapabilities>(expected);
-            deresult.ShouldBeEquivalentTo(model);
+            var deresult = new Serializer(ClientVersion.Lsp3).DeserializeObject<ClientCapabilities>(expected);
+            deresult.Should().BeEquivalentTo(model, o => o.ConfigureForSupports(Logger));
+        }
+
+        [Theory, JsonFixture]
+        public void Github_Issue_75(string expected)
+        {
+            Action a = () => JObject.Parse(expected).ToObject(typeof(ClientCapabilities), new Serializer(ClientVersion.Lsp3).JsonSerializer);
+            a.Should().NotThrow();
         }
     }
 }

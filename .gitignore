@@ -34,4 +34,7 @@ buildlog
 
 # Build folder
 tools/*/
-tools/packages.config.md5sum
+/tools/packages.config.md5sum
+/coverage
+
+.idea

@@ -1,14 +1,17 @@
-﻿using System;
+using System;
 using System.Threading.Tasks;
-using JsonRpc.Server;
+using OmniSharp.Extensions.JsonRpc.Server;
 
-namespace JsonRpc
+namespace OmniSharp.Extensions.JsonRpc
 {
     public interface IRequestRouter
     {
-        void RouteNotification(Notification notification);
-        Task<ErrorResponse> RouteRequest(Request request);
+        IHandlerDescriptor GetDescriptor(Notification notification);
+        IHandlerDescriptor GetDescriptor(Request request);
 
-        IDisposable Add(IJsonRpcHandler handler);
+        Task RouteNotification(Notification notification);
+        Task RouteNotification(IHandlerDescriptor descriptor, Notification notification);
+        Task<ErrorResponse> RouteRequest(Request request);
+        Task<ErrorResponse> RouteRequest(IHandlerDescriptor descriptor, Request request);
     }
 }

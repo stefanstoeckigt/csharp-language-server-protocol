@@ -2,10 +2,9 @@
 using Newtonsoft.Json.Linq;
 using Newtonsoft.Json.Serialization;
 
-namespace JsonRpc.Server
+namespace OmniSharp.Extensions.JsonRpc.Server
 {
-    [JsonObject(NamingStrategyType = typeof(CamelCaseNamingStrategy))]
-    public class Request
+    public class Request : IMethodWithParams
     {
         internal Request(object id, string method, JToken @params) : this(id, method, @params, "2.0") { }
 
@@ -23,6 +22,7 @@ namespace JsonRpc.Server
 
         public object Id { get; }
 
+        [JsonProperty("jsonrpc")]
         public string ProtocolVersion { get; }
 
         public string Method { get; }

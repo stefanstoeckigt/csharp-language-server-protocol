@@ -1,13 +1,21 @@
-﻿using System;
+using System;
 using FluentAssertions;
-using Lsp.Capabilities.Client;
 using Newtonsoft.Json;
+using NSubstitute;
+using OmniSharp.Extensions.LanguageServer.Protocol;
+using OmniSharp.Extensions.LanguageServer.Protocol.Client.Capabilities;
+using OmniSharp.Extensions.LanguageServer.Protocol.Serialization;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace Lsp.Tests.Capabilities.Client
 {
-    public class TextDocumentClientCapabilitiesTests
+    public class TextDocumentClientCapabilitiesTests : AutoTestBase
     {
+        public TextDocumentClientCapabilitiesTests(ITestOutputHelper testOutputHelper) : base(testOutputHelper)
+        {
+        }
+
         [Theory, JsonFixture]
         public void SimpleTest(string expected)
         {
@@ -42,8 +50,20 @@ namespace Lsp.Tests.Capabilities.Client
 
             result.Should().Be(expected);
 
-            var deresult = JsonConvert.DeserializeObject<TextDocumentClientCapabilities>(expected);
-            deresult.ShouldBeEquivalentTo(model);
+            var deresult = new Serializer(ClientVersion.Lsp3).DeserializeObject<TextDocumentClientCapabilities>(expected);
+            deresult.Should().BeEquivalentTo(model, o => o.ConfigureForSupports(Logger));
+        }
+
+        [Theory, JsonFixture]
+        public void EmptyTest(string expected)
+        {
+            var model = new TextDocumentClientCapabilities();
+            var result = Fixture.SerializeObject(model);
+
+            result.Should().Be(expected);
+
+            var deresult = new Serializer(ClientVersion.Lsp3).DeserializeObject<TextDocumentClientCapabilities>(expected);
+            deresult.Should().BeEquivalentTo(model, o => o.ConfigureForSupports(Logger));
         }
     }
 }

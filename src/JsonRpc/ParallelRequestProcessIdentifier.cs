@@ -1,10 +1,10 @@
-using JsonRpc.Server;
+using OmniSharp.Extensions.JsonRpc.Server;
 
-namespace JsonRpc
+namespace OmniSharp.Extensions.JsonRpc
 {
     public class ParallelRequestProcessIdentifier : IRequestProcessIdentifier
     {
-        public RequestProcessType Identify(Renor renor)
+        public RequestProcessType Identify(IHandlerDescriptor descriptor)
         {
             return RequestProcessType.Parallel;
         }

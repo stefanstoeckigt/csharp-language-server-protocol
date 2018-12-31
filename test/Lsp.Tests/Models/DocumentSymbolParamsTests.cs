@@ -1,7 +1,10 @@
-﻿using System;
+using System;
 using FluentAssertions;
-using Lsp.Models;
 using Newtonsoft.Json;
+using OmniSharp.Extensions.LanguageServer.Protocol;
+using OmniSharp.Extensions.LanguageServer.Protocol.Client.Capabilities;
+using OmniSharp.Extensions.LanguageServer.Protocol.Models;
+using OmniSharp.Extensions.LanguageServer.Protocol.Serialization;
 using Xunit;
 
 namespace Lsp.Tests.Models
@@ -15,11 +18,11 @@ namespace Lsp.Tests.Models
                 TextDocument = new TextDocumentIdentifier(new Uri("file:///abc/123.cs"))
             };
             var result = Fixture.SerializeObject(model);
-            
+
             result.Should().Be(expected);
 
-            var deresult = JsonConvert.DeserializeObject<DocumentSymbolParams>(expected);
-            deresult.ShouldBeEquivalentTo(model);
+            var deresult = new Serializer(ClientVersion.Lsp3).DeserializeObject<DocumentSymbolParams>(expected);
+            deresult.Should().BeEquivalentTo(model);
         }
     }
 }

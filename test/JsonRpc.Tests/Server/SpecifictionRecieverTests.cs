@@ -1,10 +1,12 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
-using JsonRpc.Server;
-using JsonRpc.Server.Messages;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using OmniSharp.Extensions.JsonRpc;
+using OmniSharp.Extensions.JsonRpc.Server;
+using OmniSharp.Extensions.JsonRpc.Server.Messages;
 using Xunit;
 
 namespace JsonRpc.Tests.Server
@@ -25,7 +27,8 @@ namespace JsonRpc.Tests.Server
                 var r = request[i];
                 var response = result[i];
 
-                response.ShouldBeEquivalentTo(r);
+                JsonConvert.SerializeObject(response)
+                    .Should().Be(JsonConvert.SerializeObject(r));
             }
         }
 
@@ -56,6 +59,24 @@ namespace JsonRpc.Tests.Server
                     });
 
                 yield return (
+                    @"{""jsonrpc"": ""2.0"", ""method"": ""subtract"", ""id"": 4}",
+                    new Renor[]
+                    {
+                        new Request(4, "subtract", null)
+                    });
+
+                // http://www.jsonrpc.org/specification says:
+                //      If present, parameters for the rpc call MUST be provided as a Structured value.
+                // Some clients may serialize params as null, instead of omitting it
+                // We're going to pretend we never got the null in the first place.
+                yield return (
+                    @"{""jsonrpc"": ""2.0"", ""method"": ""subtract"", ""params"": null, ""id"": 4}",
+                    new Renor[]
+                    {
+                        new Request(4, "subtract", new JObject())
+                    });
+
+                yield return (
                     @"{""jsonrpc"": ""2.0"", ""method"": ""update"", ""params"": [1,2,3,4,5]}",
                     new Renor[]
                     {
@@ -68,6 +89,24 @@ namespace JsonRpc.Tests.Server
                     {
                         new Notification("foobar", null)
                     });
+
+                // http://www.jsonrpc.org/specification says:
+                //      If present, parameters for the rpc call MUST be provided as a Structured value.
+                // Some clients may serialize params as null, instead of omitting it
+                // We're going to pretend we never got the null in the first place.
+                yield return (
+                    @"{""jsonrpc"": ""2.0"", ""method"": ""foobar"", ""params"": null}",
+                    new Renor[]
+                    {
+                        new Notification("foobar", new JObject())
+                    });
+
+                yield return (
+                    @"{""jsonrpc"":""2.0"",""method"":""initialized"",""params"":{}}",
+                    new Renor[] {
+                        new Notification("initialized", new JObject()), 
+                    }
+                );
 
                 yield return (
                     @"{""jsonrpc"": ""2.0"", ""method"": 1, ""params"": ""bar""}",

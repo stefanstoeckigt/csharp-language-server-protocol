@@ -1,21 +1,28 @@
-﻿using System;
 using System.Collections.Concurrent;
-using System.Threading;
 using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
 
-namespace JsonRpc
+namespace OmniSharp.Extensions.JsonRpc
 {
     public class ResponseRouter : IResponseRouter
     {
         private readonly IOutputHandler _outputHandler;
+        private readonly ISerializer _serializer;
         private readonly object _lock = new object();
         private long _id = 0;
         private readonly ConcurrentDictionary<long, TaskCompletionSource<JToken>> _requests = new ConcurrentDictionary<long, TaskCompletionSource<JToken>>();
 
-        public ResponseRouter(IOutputHandler outputHandler)
+        public ResponseRouter(IOutputHandler outputHandler, ISerializer serializer)
         {
             _outputHandler = outputHandler;
+            _serializer = serializer;
+        }
+
+        public void SendNotification(string method)
+        {
+            _outputHandler.Send(new Client.Notification() {
+                Method = method
+            });
         }
 
         public void SendNotification<T>(string method, T @params)
@@ -46,7 +53,35 @@ namespace JsonRpc
             try
             {
                 var result = await tcs.Task;
-                return result.ToObject<TResponse>();
+                return result.ToObject<TResponse>(_serializer.JsonSerializer);
+            }
+            finally
+            {
+                _requests.TryRemove(nextId, out var _);
+            }
+        }
+
+        public async Task<TResponse> SendRequest<TResponse>(string method)
+        {
+            long nextId;
+            lock (_lock)
+            {
+                nextId = _id++;
+            }
+
+            var tcs = new TaskCompletionSource<JToken>();
+            _requests.TryAdd(nextId, tcs);
+
+            _outputHandler.Send(new Client.Request() {
+                Method = method,
+                Params = null,
+                Id = nextId
+            });
+
+            try
+            {
+                var result = await tcs.Task;
+                return result.ToObject<TResponse>(_serializer.JsonSerializer);
             }
             finally
             {

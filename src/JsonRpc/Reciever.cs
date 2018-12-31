@@ -1,10 +1,10 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using System.Linq;
-using JsonRpc.Server;
-using JsonRpc.Server.Messages;
 using Newtonsoft.Json.Linq;
+using OmniSharp.Extensions.JsonRpc.Server;
+using OmniSharp.Extensions.JsonRpc.Server.Messages;
 
-namespace JsonRpc
+namespace OmniSharp.Extensions.JsonRpc
 {
     public class Reciever : IReciever
     {
@@ -63,12 +63,13 @@ namespace JsonRpc
 
             if (hasRequestId && request.TryGetValue("result", out var response))
             {
-                return new Response(requestId, response);
+                return new ServerResponse(requestId, response);
             }
 
             if (hasRequestId && request.TryGetValue("error", out var errorResponse))
             {
-                return new Response(requestId, errorResponse.ToString());
+                // TODO: this doesn't seem right.
+                return new ServerError(requestId, errorResponse);
             }
 
             var method = request["method"]?.Value<string>();
@@ -78,9 +79,16 @@ namespace JsonRpc
             }
 
             var hasParams = request.TryGetValue("params", out var @params);
-            if (hasParams && @params.Type != JTokenType.Array && @params.Type != JTokenType.Object)
+            if (hasParams && @params?.Type != JTokenType.Array && @params?.Type != JTokenType.Object && @params?.Type != JTokenType.Null)
             {
                 return new InvalidRequest(requestId, "Invalid params");
+            }
+
+            // Special case params such that if we get a null value (from a non spec compliant system)
+            // that we don't fall over and throw an error.
+            if (@params?.Type == JTokenType.Null)
+            {
+                @params = new JObject();
             }
 
             // id == request

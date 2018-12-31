@@ -1,12 +1,15 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using JsonRpc.Server.Messages;
 using Newtonsoft.Json.Linq;
+using Microsoft.Extensions.Logging;
+using Newtonsoft.Json;
+using OmniSharp.Extensions.JsonRpc.Server;
+using OmniSharp.Extensions.JsonRpc.Server.Messages;
 
-namespace JsonRpc
+namespace OmniSharp.Extensions.JsonRpc
 {
     public class InputHandler : IInputHandler
     {
@@ -23,6 +26,8 @@ namespace JsonRpc
         private Thread _inputThread;
         private readonly IRequestRouter _requestRouter;
         private readonly IResponseRouter _responseRouter;
+        private readonly ISerializer _serializer;
+        private readonly ILogger<InputHandler> _logger;
         private readonly IScheduler _scheduler;
 
         public InputHandler(
@@ -31,7 +36,9 @@ namespace JsonRpc
             IReciever reciever,
             IRequestProcessIdentifier requestProcessIdentifier,
             IRequestRouter requestRouter,
-            IResponseRouter responseRouter
+            IResponseRouter responseRouter,
+            ILoggerFactory loggerFactory,
+            ISerializer serializer
             )
         {
             if (!input.CanRead) throw new ArgumentException($"must provide a readable stream for {nameof(input)}", nameof(input));
@@ -41,10 +48,11 @@ namespace JsonRpc
             _requestProcessIdentifier = requestProcessIdentifier;
             _requestRouter = requestRouter;
             _responseRouter = responseRouter;
-
-            _scheduler = new ProcessScheduler();
+            _serializer = serializer;
+            _logger = loggerFactory.CreateLogger<InputHandler>();
+            _scheduler = new ProcessScheduler(loggerFactory);
             _inputThread = new Thread(ProcessInputStream) { IsBackground = true, Name = "ProcessInputStream" };
-            }
+        }
 
         public void Start()
         {
@@ -57,7 +65,7 @@ namespace JsonRpc
         private void ProcessInputStream()
         {
             // some time to attach a debugger
-            // System.Threading.Thread.Sleep(TimeSpan.FromSeconds(5)); 
+            // System.Threading.Thread.Sleep(TimeSpan.FromSeconds(5));
 
             // header is encoded in ASCII
             // "Content-Length: 0" counts bytes for the following content
@@ -69,7 +77,7 @@ namespace JsonRpc
                 var buffer = new byte[300];
                 var current = _input.Read(buffer, 0, MinBuffer);
                 if (current == 0) return; // no more _input
-                while (current < MinBuffer || 
+                while (current < MinBuffer ||
                        buffer[current - 4] != CR || buffer[current - 3] != LF ||
                        buffer[current - 2] != CR || buffer[current - 1] != LF)
                 {
@@ -108,7 +116,7 @@ namespace JsonRpc
                         received += n;
                     }
                     // TODO sometimes: encoding should be based on the respective header (including the wrong "utf8" value)
-                    var payload = System.Text.Encoding.UTF8.GetString(requestBuffer); 
+                    var payload = System.Text.Encoding.UTF8.GetString(requestBuffer);
                     HandleRequest(payload);
                 }
             }
@@ -144,42 +152,73 @@ namespace JsonRpc
                     var tcs = _responseRouter.GetRequest(id);
                     if (tcs is null) continue;
 
-                    if (response.Error is null)
+                    if (response is ServerResponse serverResponse)
                     {
-                        tcs.SetResult(response.Result);
+                        tcs.SetResult(serverResponse.Result);
                     }
-                    else
+                    else if (response is ServerError serverError)
                     {
-                        tcs.SetException(new Exception(response.Error));
+                        tcs.SetException(new JsonRpcException(serverError));
                     }
                 }
 
                 return;
             }
 
-            foreach (var (type, item) in requests.Select(x => (_requestProcessIdentifier.Identify(x), x)))
+            foreach (var item in requests)
             {
                 if (item.IsRequest)
                 {
+                    var descriptor = _requestRouter.GetDescriptor(item.Request);
+                    if (descriptor is null) continue;
+                    var type = _requestProcessIdentifier.Identify(descriptor);
                     _scheduler.Add(
                         type,
-                        async () => {
-                            var result = await _requestRouter.RouteRequest(item.Request);
-                            _outputHandler.Send(result.Value);
+                        item.Request.Method,
+                        async () =>
+                        {
+                            try
+                            {
+                                var result = await _requestRouter.RouteRequest(descriptor, item.Request);
+                                _outputHandler.Send(result.Value);
+                            }
+                            catch (Exception e)
+                            {
+                                _logger.LogCritical(Events.UnhandledRequest, e, "Unhandled exception executing request {Method}@{Id}", item.Request.Method, item.Request.Id);
+                                // TODO: Should we rethrow or swallow?
+                                // If an exception happens... the whole system could be in a bad state, hence this throwing currently.
+                                throw;
+                            }
                         }
                     );
                 }
-                else if (item.IsNotification)
+
+                if (item.IsNotification)
                 {
+                    var descriptor = _requestRouter.GetDescriptor(item.Notification);
+                    if (descriptor is null) continue;
+                    var type = _requestProcessIdentifier.Identify(descriptor);
                     _scheduler.Add(
                         type,
-                        () => {
-                            _requestRouter.RouteNotification(item.Notification);
-                            return Task.CompletedTask;
+                        item.Notification.Method,
+                        async () =>
+                        {
+                            try
+                            {
+                                await _requestRouter.RouteNotification(descriptor, item.Notification);
+                            }
+                            catch (Exception e)
+                            {
+                                _logger.LogCritical(Events.UnhandledNotification, e, "Unhandled exception executing notification {Method}", item.Notification.Method);
+                                // TODO: Should we rethrow or swallow?
+                                // If an exception happens... the whole system could be in a bad state, hence this throwing currently.
+                                throw;
+                            }
                         }
                     );
                 }
-                else if (item.IsError)
+
+                if (item.IsError)
                 {
                     // TODO:
                     _outputHandler.Send(item.Error);
